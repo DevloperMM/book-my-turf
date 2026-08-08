@@ -91,4 +91,3 @@ Models: `User` (clerkId only, no custom auth fields) · `Owner` · `Turf` · `Sl
 - Any new async/background work goes through BullMQ, not ad-hoc `setTimeout` or inline `await` chains in a request path.
 - Any new external-caller endpoint goes in `app/api/`; anything a logged-in user triggers is a Server Action.
 - Everything built should map back to one of: the two invariants (no double-booking, no double-charging), the SSE live-notice differentiator, or an explicit CV claim (BullMQ async confirmation, Vitest/Supertest coverage, Pino/Sentry telemetry). If a suggestion doesn't map to one of these, flag it as optional rather than adding it by default.
-
