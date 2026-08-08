@@ -25,3 +25,10 @@ bun.lockb
 # Cache folders
 .turbo/
 .cache/
+
+.agents
+.claude
+.windsurf
+
+/prisma/generated
+.env.sentry-build-plugin

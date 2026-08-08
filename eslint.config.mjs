@@ -7,19 +7,12 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   nextPrettier,
-  // Override default ignores of eslint-config-next.
-  globalIgnores([
-    // Default ignores of eslint-config-next:
-    '.next/**',
-    'out/**',
-    'build/**',
-    'next-env.d.ts'
-  ]),
+  globalIgnores(['.next/**', 'out/**', 'build/**', 'next-env.d.ts', 'coverage/**', 'generated/**']),
   {
     rules: {
       'no-console': 'error',
       'no-unused-vars': 'warn',
-      'no-undef': 'warn',
+      '@typescript-eslint/no-unused-vars': 'warn',
       quotes: ['error', 'single', { allowTemplateLiterals: true }]
     }
   }
