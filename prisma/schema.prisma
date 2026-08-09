@@ -8,9 +8,74 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
+  id        String    @id
+  email     String    @unique
   name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  bookings  Booking[]
+}
+
+model Turf {
+  id          String    @id @default(cuid())
+  name        String
+  location    String
+  pricePerHr  Int
+  openHour    Int
+  closeHour   Int
+  slotMinutes Int       @default(60)
+  imageUrl    String?
+  createdAt   DateTime  @default(now())
+  bookings    Booking[]
+}
+
+model Booking {
+  id             String        @id @default(cuid())
+  turfId         String
+  userId         String
+  date           DateTime      @db.Date
+  startTime      DateTime
+  endTime        DateTime
+  status         BookingStatus @default(HELD)
+  holdExpiresAt  DateTime
+  idempotencyKey String        @unique
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  turf           Turf          @relation(fields: [turfId], references: [id])
+  user           User          @relation(fields: [userId], references: [id])
+  payment        Payment?
+
+  @@unique([turfId, date, startTime])
+  @@index([turfId, date])
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  bookingId      String        @unique
+  gatewayOrderId String?       @unique
+  amount         Int
+  status         PaymentStatus @default(PENDING)
+  idempotencyKey String        @unique
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  booking        Booking       @relation(fields: [bookingId], references: [id])
+}
+
+model WebhookEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
+}
+
+enum BookingStatus {
+  HELD
+  PAID
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
 }

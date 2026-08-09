@@ -45,7 +45,7 @@ Never "fix" these with application-level checks alone (e.g. `SELECT` then `INSER
 - **Hold expiry is cron-driven** (`api/cron/expire-holds/route.ts`), sweeping every 30–60s. This is a deliberate simplicity choice over event-driven (e.g. Redis keyspace notifications) — defensible as "scheduled sweep," not claimed as instant expiry.
 - **Services** — services hold both business logic and direct Prisma DB calls. No separate repository layer or port/interface abstractions.
 - **Error hierarchy**: `AppError`, `ConflictError`, `NotFoundError`, `ValidationError`, `UnauthorizedError`. (No `RateLimitError` usage in this build — rate limiting is out of scope.)
-- **Response envelope**: all Server Actions and Route Handlers return via `ok()` / `fail()`, wrapped by `withHandler` / `withAction`.
+- **Response envelope**: all Server Actions and Route Handlers return via `ok()` / `fail()`, wrapped by `response.ts`.
 - **BullMQ** is used only for async booking confirmation after payment succeeds (receipt, finalization) — runs in a separate `worker.ts` process, deployed separately from the Next.js app (Next.js serverless can't host a long-running worker).
 - **SSE** (`api/slots/[slotId]/stream/route.ts`, edge runtime) backed by Redis pub/sub — publishes on hold created / hold expired via cron / slot booked. This is the headline differentiator ("told immediately" instead of after payment); don't replace with polling unless asked.
 - **Slot times stored in UTC** in the DB (`startsAt`/`endsAt`), converted to local time only at render.
@@ -63,15 +63,14 @@ src/
 ├── actions/               # Server Actions (create-hold, initiate-payment, confirm-booking)
 ├── services/              # hold.service, payment.service, slot.service
 ├── queue/                 # BullMQ queue + worker for async confirmation
-├── lib/                   # db, redis, pubsub, logger (Pino), telemetry (Sentry), errors, response
-└── schemas/               # Zod validation
+└── lib/                   # db (Prisma), redis, logger (Pino), errors, response, schema
 ```
 
 Models: `User` (clerkId only, no custom auth fields) · `Owner` · `Turf` · `Slot` · `Hold` (partial unique index on active holds per slot) · `Booking` · `Payment` (unique idempotency key / `bookingId`). No `Owner` login — owners are seeded relational data only.
 
 ## Testing requirements
 
-- `tests/unit/` (Vitest) — services, schemas, error handling.
+- `tests/unit/` (Vitest) — services, error handling.
 - `tests/integration/` (Supertest) — Route Handlers end-to-end, including webhook flow.
 - `tests/concurrency/` — fire 50+ parallel hold attempts on one slot; assert exactly one succeeds.
 - `tests/idempotency/` — fire 100+ retries/replays of one payment event; assert exactly one charge.
@@ -81,8 +80,6 @@ Models: `User` (clerkId only, no custom auth fields) · `Owner` · `Turf` · `Sl
 
 - Pino for structured logs.
 - Sentry for error tracking.
-- `telemetry.ts` must emit actual latency + success/failure metrics per Server Action / Route Handler call (via `withHandler`/`withAction`) — not just error capture.
-- **The one alert that must exist**: "hold expired but payment succeeded." This is the specific case where both invariants collide and money is at risk. Treat this as the top-priority observability requirement, above generic error alerting.
 
 ## When suggesting changes
 
