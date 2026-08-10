@@ -5,11 +5,15 @@ const serverSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DATABASE_URL: z.string().url(),
   CLERK_SECRET_KEY: z.string().min(1),
+  CLERK_WEBHOOK_SECRET: z.string().min(1),
   REDIS_URL: z.string().url(),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   SENTRY_ORG: z.string().min(1),
   SENTRY_PROJECT: z.string().min(1),
-  SENTRY_AUTH_TOKEN: z.string().min(1)
+  SENTRY_AUTH_TOKEN: z.string().min(1),
+  RAZORPAY_WEBHOOK_SECRET: z.string().min(1),
+  RAZORPAY_KEY_SECRET: z.string().min(1),
+  RAZORPAY_KEY_ID: z.string().min(1)
 })
 
 const clientSchema = z.object({

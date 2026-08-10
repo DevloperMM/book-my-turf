@@ -7,7 +7,7 @@ const globalForRedis = globalThis as unknown as {
 
 const redisUrl = env.REDIS_URL
 
-export const redis =
+const redis =
   globalForRedis.redis ??
   new Redis(redisUrl, {
     maxRetriesPerRequest: null,
@@ -16,3 +16,5 @@ export const redis =
   })
 
 if (env.NODE_ENV !== 'production') globalForRedis.redis = redis
+
+export default redis
