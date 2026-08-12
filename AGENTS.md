@@ -55,7 +55,7 @@ Never "fix" these with application-level checks alone (e.g. `SELECT` then `INSER
 ```
 src/
 ├── middleware.ts          # clerkMiddleware — guards /checkout, /bookings
-├── app/                   # pages, sign-in/sign-up (Clerk), + 4 external-facing Route Handlers
+├── app/                   # pages, login/register (Clerk), + 4 external-facing Route Handlers
 │   └── api/
 │       ├── webhooks/{payment,clerk}/route.ts
 │       ├── cron/expire-holds/route.ts

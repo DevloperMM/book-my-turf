@@ -1,7 +1,11 @@
 import { withSentryConfig } from '@sentry/nextjs'
 import type { NextConfig } from 'next'
 
-const nextConfig: NextConfig = {}
+const nextConfig: NextConfig = {
+  images: {
+    remotePatterns: [{ protocol: 'https', hostname: 'images.unsplash.com' }]
+  }
+}
 
 export default withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG,
@@ -9,8 +13,10 @@ export default withSentryConfig(nextConfig, {
   silent: !process.env.CI,
   widenClientFileUpload: true,
   tunnelRoute: '/monitoring',
-  disableLogger: true,
   sourcemaps: {
     disable: process.env.NODE_ENV !== 'production'
+  },
+  webpack: {
+    treeshake: { removeDebugLogging: true }
   }
 })

@@ -1,21 +1,17 @@
 import type { Metadata } from 'next'
-import { ClerkProvider, Show, SignInButton, SignUpButton, UserButton } from '@clerk/nextjs'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { ClerkProvider } from '@clerk/nextjs'
+import { Inter, Oswald, JetBrains_Mono } from 'next/font/google'
 import React from 'react'
 import './globals.css'
+import { Toaster } from '@/components/ui/toast'
+import Navbar from '@/components/Navbar'
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin']
-})
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin']
-})
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
+const oswald = Oswald({ subsets: ['latin'], variable: '--font-oswald' })
+const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono' })
 
 export const metadata: Metadata = {
-  title: 'BookMySlot',
+  title: 'BOOK MY SLOT',
   description: 'Book Your Slots Easily'
 }
 
@@ -27,24 +23,22 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`dark ${inter.variable} ${oswald.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col bg-background text-foreground bg-radial-gradient">
         <ClerkProvider>
-          <header className="flex justify-end items-center p-4 gap-4 h-16">
-            <Show when="signed-out">
-              <SignInButton />
-              <SignUpButton>
-                <button className="bg-purple-700 text-white rounded-full font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 cursor-pointer">
-                  Sign Up
-                </button>
-              </SignUpButton>
-            </Show>
-            <Show when="signed-in">
-              <UserButton />
-            </Show>
-          </header>
-          {children}
+          <Navbar />
+          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
+            {children}
+          </main>
+          <footer className="border-t border-border/40 py-6 text-center text-xs text-muted-foreground">
+            <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+              <span className="font-semibold text-foreground/80">Book My Slot</span>
+              <span>Real-time pitch reservation with instant double-booking prevention</span>
+            </div>
+          </footer>
+          <Toaster />
         </ClerkProvider>
       </body>
     </html>
