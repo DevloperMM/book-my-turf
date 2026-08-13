@@ -1,6 +1,7 @@
 generator client {
-  provider = "prisma-client"
-  output   = "./generated"
+  provider        = "prisma-client"
+  output          = "./generated"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -10,7 +11,7 @@ datasource db {
 model User {
   id        String    @id
   email     String    @unique
-  name      String
+  name      String?
   createdAt DateTime  @default(now())
   bookings  Booking[]
 }
@@ -44,20 +45,21 @@ model Booking {
   user           User          @relation(fields: [userId], references: [id])
   payment        Payment?
 
-  @@unique([turfId, date, startTime])
+  @@unique([turfId, date, startTime], map: "booking_active_slot_key", where: raw("(status = ANY (ARRAY['HELD'::\"BookingStatus\", 'PAID'::\"BookingStatus\", 'CONFIRMED'::\"BookingStatus\"]))"))
   @@index([turfId, date])
 }
 
 model Payment {
-  id             String        @id @default(cuid())
-  bookingId      String        @unique
-  gatewayOrderId String?       @unique
-  amount         Int
-  status         PaymentStatus @default(PENDING)
-  idempotencyKey String        @unique
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  booking        Booking       @relation(fields: [bookingId], references: [id])
+  id               String        @id @default(cuid())
+  bookingId        String        @unique
+  gatewayOrderId   String?       @unique
+  amount           Int
+  status           PaymentStatus @default(PENDING)
+  idempotencyKey   String        @unique
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  gatewayPaymentId String?       @unique
+  booking          Booking       @relation(fields: [bookingId], references: [id])
 }
 
 model WebhookEvent {

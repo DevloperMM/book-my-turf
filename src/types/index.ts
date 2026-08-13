@@ -1,63 +1,44 @@
 import { z } from 'zod'
 import {
-  createHoldSchema,
+  holdSlotSchema,
+  cancelBookingSchema,
   initiatePaymentSchema,
-  confirmBookingSchema,
-  slotQuerySchema,
-  razorpayWebhookSchema,
-  clerkWebhookSchema
+  getTurfSlotsSchema,
+  razorpayWebhookSchema
 } from '@/lib/schemas'
-import type {
-  Turf as PrismaTurf,
-  Booking as PrismaBooking,
-  Payment as PrismaPayment
-} from '@prisma-client'
 
-export type CreateHoldInput = z.infer<typeof createHoldSchema>
+// Inputs — derived from the schemas above, never hand-written separately
+
+export type HoldSlotInput = z.infer<typeof holdSlotSchema>
+export type CancelBookingInput = z.infer<typeof cancelBookingSchema>
 export type InitiatePaymentInput = z.infer<typeof initiatePaymentSchema>
-export type ConfirmBookingInput = z.infer<typeof confirmBookingSchema>
-export type SlotQueryInput = z.infer<typeof slotQuerySchema>
-export type RazorpayWebhookPayload = z.infer<typeof razorpayWebhookSchema>
-export type ClerkWebhookPayload = z.infer<typeof clerkWebhookSchema>
+export type GetTurfSlotsInput = z.infer<typeof getTurfSlotsSchema>
+export type RazorpayWebhookEvent = z.infer<typeof razorpayWebhookSchema>
 
-type DateKeys<T> = { [K in keyof T]: T[K] extends Date ? K : never }[keyof T]
-type Serialized<T> = Omit<T, DateKeys<T>> & Record<DateKeys<T>, string>
+// Server Action results — discriminated unions, not thrown exceptions
 
-export type Turf = Pick<
-  PrismaTurf,
-  'id' | 'name' | 'location' | 'pricePerHr' | 'openHour' | 'closeHour' | 'slotMinutes' | 'imageUrl'
->
+export type HoldSlotResult =
+  { ok: true; bookingId: string } | { ok: false; reason: 'SLOT_TAKEN' | 'UNAUTHENTICATED' }
 
-export type PaymentSummary = Pick<PrismaPayment, 'id' | 'status' | 'gatewayOrderId' | 'amount'>
-export type PaymentStatus = PrismaPayment['status']
-export type BookingStatus = PrismaBooking['status']
+export type InitiatePaymentResult =
+  | { ok: true; orderId: string; amount: number; keyId: string }
+  | { ok: false; reason: 'BOOKING_NOT_FOUND' | 'BOOKING_NOT_HELD' }
 
-export type Booking = Serialized<
-  Pick<
-    PrismaBooking,
-    | 'id'
-    | 'turfId'
-    | 'userId'
-    | 'date'
-    | 'startTime'
-    | 'endTime'
-    | 'status'
-    | 'holdExpiresAt'
-    | 'idempotencyKey'
-  >
-> & {
-  turf?: Turf
-  payment?: PaymentSummary | null
-}
+// Read-side view model — deliberately NOT the Prisma Booking type
+
+export type SlotStatus = 'available' | 'held' | 'booked'
 
 export interface Slot {
   startTime: string
   endTime: string
-  status: 'AVAILABLE' | 'HELD' | 'BOOKED'
+  status: SlotStatus
+  bookingId?: string
 }
 
-export interface InitiatePaymentResult {
-  gatewayOrderId: string | null
-  amount: number
-  keyId: string
+// SSE wire payload — what's actually published to Redis and streamed
+
+export interface SlotUpdateEvent {
+  turfId: string
+  startTime: string
+  status: SlotStatus
 }

@@ -154,6 +154,10 @@
 }
 
 .bg-radial-gradient {
-  background-image: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.12) 0%, rgba(14, 165, 233, 0.05) 35%, transparent 70%);
+  background-image: radial-gradient(
+    circle at 50% 0%,
+    rgba(16, 185, 129, 0.12) 0%,
+    rgba(14, 165, 233, 0.05) 35%,
+    transparent 70%
+  );
 }
-

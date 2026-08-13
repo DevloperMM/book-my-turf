@@ -1,14 +1,13 @@
 import type { Metadata } from 'next'
 import { ClerkProvider } from '@clerk/nextjs'
-import { Inter, Oswald, JetBrains_Mono } from 'next/font/google'
+import { Inter, JetBrains_Mono } from 'next/font/google'
 import React from 'react'
 import './globals.css'
 import { Toaster } from '@/components/ui/toast'
 import Navbar from '@/components/Navbar'
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
-const oswald = Oswald({ subsets: ['latin'], variable: '--font-oswald' })
-const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono' })
+const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
+const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' })
 
 export const metadata: Metadata = {
   title: 'BOOK MY SLOT',
@@ -23,21 +22,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${inter.variable} ${oswald.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground bg-radial-gradient">
+      <body
+        className={`${inter.className} min-h-full flex flex-col bg-slate-50 text-slate-900 font-sans`}
+      >
         <ClerkProvider>
           <Navbar />
           <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
             {children}
           </main>
-          <footer className="border-t border-border/40 py-6 text-center text-xs text-muted-foreground">
-            <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
-              <span className="font-semibold text-foreground/80">Book My Slot</span>
-              <span>Real-time pitch reservation with instant double-booking prevention</span>
-            </div>
-          </footer>
           <Toaster />
         </ClerkProvider>
       </body>

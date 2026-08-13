@@ -1,55 +1,41 @@
 import { z } from 'zod'
 
-export const cuidSchema = z.string().min(1)
-export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD')
-export const isoDateTimeSchema = z.string().datetime()
+// Server Action Inputs
 
-export const createHoldSchema = z.object({
-  turfId: cuidSchema,
-  date: isoDateSchema,
-  startTime: isoDateTimeSchema,
-  endTime: isoDateTimeSchema,
-  idempotencyKey: z.string().min(1)
+export const holdSlotSchema = z.object({
+  turfId: z.string().cuid(),
+  startTime: z.coerce.date()
+})
+
+export const cancelBookingSchema = z.object({
+  bookingId: z.string().cuid()
 })
 
 export const initiatePaymentSchema = z.object({
-  bookingId: cuidSchema,
-  idempotencyKey: z.string().min(1)
+  bookingId: z.string().cuid()
 })
 
-export const confirmBookingSchema = z.object({
-  bookingId: cuidSchema
+// Query Inputs
+
+export const getTurfSlotsSchema = z.object({
+  turfId: z.string().cuid(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
 })
 
-export const slotQuerySchema = z.object({
-  turfId: cuidSchema,
-  date: isoDateSchema
-})
+// Razorpay webhook payload
 
 export const razorpayWebhookSchema = z.object({
-  event: z.string(),
+  event: z.enum(['payment.captured', 'payment.failed']),
   payload: z.object({
-    payment: z.object({
-      entity: z.object({
-        id: z.string(),
-        order_id: z.string(),
-        amount: z.number(),
-        status: z.string()
+    payment: z
+      .object({
+        entity: z.object({
+          id: z.string(),
+          order_id: z.string(),
+          amount: z.number(),
+          status: z.string()
+        })
       })
-    })
-  })
-})
-
-export const clerkWebhookSchema = z.object({
-  type: z.enum(['user.created', 'user.updated']),
-  data: z.object({
-    id: z.string(),
-    email_addresses: z.array(
-      z.object({
-        email_address: z.string().email()
-      })
-    ),
-    first_name: z.string().nullable(),
-    last_name: z.string().nullable()
+      .optional()
   })
 })

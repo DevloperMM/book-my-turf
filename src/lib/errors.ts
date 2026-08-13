@@ -38,6 +38,12 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+export class ForbiddenError extends AppError {
+  constructor(message: string = 'Access forbidden') {
+    super(message, 403, 'FORBIDDEN', true)
+  }
+}
+
 export class ValidationError extends AppError {
   fields?: Record<string, string[]>
 

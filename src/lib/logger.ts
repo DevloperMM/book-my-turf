@@ -5,6 +5,7 @@ const isBrowser = typeof window !== 'undefined'
 
 export const logger = pino({
   level: process.env.LOG_LEVEL ?? 'info',
+  base: null,
   ...(process.env.NODE_ENV !== 'production' && !isEdge && !isBrowser
     ? { transport: { target: 'pino-pretty' } }
     : {}),

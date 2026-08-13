@@ -2,13 +2,14 @@
 
 ## 0. Constraints this doc satisfies
 
-- No double-booking under concurrent requests (DB-level, not app-level locking)
+- No double-booking under concurrent requests (DB-level partial unique index on active holds/slots, not app-level locking)
 - No double-charge under payment retry / webhook redelivery
 - Public dashboard browsable without signup; booking requires Clerk auth
-- Clerk → Neon sync via webhook, not on every request
-- Error hierarchy + `withHandler`/`withAction` wrappers
-- BullMQ/Redis for async confirmation, Pino + Sentry for telemetry
-- Everything below is something you can actually type into a repo this week, not aspirational architecture.
+- Clerk → DB sync via Svix webhook
+- UI mutations strictly use Server Actions (`src/actions/`); Route Handlers (`src/app/api/`) are external callers ONLY (webhooks, cron, SSE)
+- Real-time SSE stream (`api/slots/[slotId]/stream`) backed by Redis pub/sub for instant slot availability broadcast
+- Scheduled cron sweep (`api/cron/expire-holds`) for hold expiration
+- BullMQ/Redis worker process for async post-payment confirmation, Pino + Sentry for telemetry
 
 ---
 
@@ -66,7 +67,7 @@ model Booking {
   updatedAt     DateTime      @updatedAt
   payment       Payment?
 
-  @@unique([turfId, date, startTime])
+  @@unique([turfId, date, startTime]) // Partial Indexes
   @@index([turfId, date])
 }
 
@@ -134,7 +135,7 @@ test('only one of two concurrent holds on the same slot succeeds', async () => {
   const payload = { turfId, date, startTime, endTime }
   const [r1, r2] = await Promise.all([
     fetch('/api/bookings', { method: 'POST', body: JSON.stringify(payload) }),
-    fetch('/api/bookings', { method: 'POST', body: JSON.stringify(payload) }),
+    fetch('/api/bookings', { method: 'POST', body: JSON.stringify(payload) })
   ])
   const statuses = [r1.status, r2.status].sort()
   expect(statuses).toEqual([201, 409])
@@ -148,12 +149,12 @@ test('retrying payment creation with same booking does not create two payments',
   const [r1, r2] = await Promise.all([
     fetch('/api/payments', {
       method: 'POST',
-      body: JSON.stringify({ bookingId }),
+      body: JSON.stringify({ bookingId })
     }),
     fetch('/api/payments', {
       method: 'POST',
-      body: JSON.stringify({ bookingId }),
-    }),
+      body: JSON.stringify({ bookingId })
+    })
   ])
   const count = await prisma.payment.count({ where: { bookingId } })
   expect(count).toBe(1)
@@ -162,7 +163,7 @@ test('retrying payment creation with same booking does not create two payments',
 test('redelivered webhook does not double-confirm a booking', async () => {
   const webhookPayload = buildSignedWebhook({
     event: 'payment.captured',
-    orderId,
+    orderId
   })
   await fetch('/api/webhooks/payment', { method: 'POST', body: webhookPayload })
   await fetch('/api/webhooks/payment', { method: 'POST', body: webhookPayload }) // redelivery
@@ -200,10 +201,7 @@ jobs:
         with: { node-version: 20, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm prisma migrate deploy
-        env:
-          {
-            DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres,
-          }
+        env: { DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres }
       - run: pnpm lint
       - run: pnpm test --coverage
         env:

@@ -16,7 +16,8 @@
   "lint-staged": {
     "*.{ts,tsx}": [
       "pnpm lint:fix",
-      "pnpm format:fix"
+      "pnpm format:fix",
+      "git add"
     ]
   },
   "dependencies": {

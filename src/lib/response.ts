@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { AppError } from './errors'
+import { ValidationError, toAppError } from './errors'
 
 type SuccessResponse<T> = {
   success: true
@@ -21,16 +21,15 @@ export function ok<T>(data: T): SuccessResponse<T> {
 }
 
 export function fail(error: unknown): ErrorResponse {
-  if (error instanceof AppError) {
-    return {
-      success: false,
-      error: { code: error.code, message: error.message }
-    }
-  }
+  const appError = toAppError(error)
 
   return {
     success: false,
-    error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' }
+    error: {
+      code: appError.code,
+      message: appError.message,
+      ...(appError instanceof ValidationError && appError.fields ? { fields: appError.fields } : {})
+    }
   }
 }
 
@@ -39,6 +38,6 @@ export function okResponse<T>(data: T, status = 200): NextResponse<SuccessRespon
 }
 
 export function failResponse(error: unknown): NextResponse<ErrorResponse> {
-  const status = error instanceof AppError ? error.statusCode : 500
-  return NextResponse.json(fail(error), { status })
+  const appError = toAppError(error)
+  return NextResponse.json(fail(error), { status: appError.statusCode })
 }
