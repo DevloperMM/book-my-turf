@@ -1,28 +1,33 @@
 import { z } from 'zod'
 
-// Server Action Inputs
+export const turfSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  location: z.string().min(2, 'Location is required'),
+  pricePerHr: z.coerce.number().positive('Price must be greater than 0'),
+  openHour: z.coerce.number().int().min(0).max(23),
+  closeHour: z.coerce.number().int().min(1).max(24),
+  slotMinutes: z.coerce.number().int().default(60),
+  imageUrl: z.url('Must be a valid URL').optional().or(z.literal(''))
+})
 
 export const holdSlotSchema = z.object({
-  turfId: z.string().cuid(),
-  startTime: z.coerce.date()
+  turfId: z.string().min(1, 'Turf ID is required'),
+  startTime: z.string().min(1, 'Start time is required')
 })
 
 export const cancelBookingSchema = z.object({
-  bookingId: z.string().cuid()
+  bookingId: z.string().min(1, 'Booking ID is required')
 })
 
 export const initiatePaymentSchema = z.object({
-  bookingId: z.string().cuid()
+  bookingId: z.string().min(1, 'Booking ID is required')
 })
 
-// Query Inputs
-
-export const getTurfSlotsSchema = z.object({
-  turfId: z.string().cuid(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
+export const verifyPaymentSchema = z.object({
+  razorpay_payment_id: z.string().min(1),
+  razorpay_order_id: z.string().min(1),
+  razorpay_signature: z.string().min(1)
 })
-
-// Razorpay webhook payload
 
 export const razorpayWebhookSchema = z.object({
   event: z.enum(['payment.captured', 'payment.failed']),

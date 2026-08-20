@@ -6,17 +6,22 @@ const serverSchema = z.object({
   DATABASE_URL: z.string().url(),
   CLERK_SECRET_KEY: z.string().min(1),
   CLERK_WEBHOOK_SIGNING_SECRET: z.string().min(1),
-  REDIS_URL: z.string().url(),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   SENTRY_ORG: z.string().min(1),
   SENTRY_PROJECT: z.string().min(1),
   SENTRY_AUTH_TOKEN: z.string().min(1),
   RAZORPAY_WEBHOOK_SECRET: z.string().min(1),
   RAZORPAY_KEY_SECRET: z.string().min(1),
-  RAZORPAY_KEY_ID: z.string().min(1)
+  RAZORPAY_KEY_ID: z.string().min(1),
+  REDIS_URL: z.string().url(),
+  QSTASH_URL: z.string().url(),
+  QSTASH_TOKEN: z.string().min(1),
+  QSTASH_CURRENT_SIGNING_KEY: z.string().min(1),
+  QSTASH_NEXT_SIGNING_KEY: z.string().min(1)
 })
 
 const clientSchema = z.object({
+  NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
   NEXT_PUBLIC_CLERK_SIGN_IN_URL: z.string().min(1),
   NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL: z.string().min(1),

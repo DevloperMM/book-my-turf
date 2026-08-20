@@ -1,17 +1,17 @@
 import type { Metadata } from 'next'
 import { ClerkProvider } from '@clerk/nextjs'
-import { Inter, JetBrains_Mono } from 'next/font/google'
+import { Inter } from 'next/font/google'
+import Script from 'next/script'
 import React from 'react'
 import './globals.css'
-import { Toaster } from '@/components/ui/toast'
 import Navbar from '@/components/Navbar'
+import { Toaster } from 'sonner'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
-const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' })
 
 export const metadata: Metadata = {
-  title: 'BOOK MY SLOT',
-  description: 'Book Your Slots Easily'
+  title: 'BookMySlot',
+  description: 'Real-time turf booking. No double-bookings, ever.'
 }
 
 export default function RootLayout({
@@ -22,20 +22,26 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${inter.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body
-        className={`${inter.className} min-h-full flex flex-col bg-slate-50 text-slate-900 font-sans`}
+        className={`${inter.className} min-h-full flex flex-col`}
+        style={{
+          backgroundColor: 'var(--canvas)',
+          color: 'var(--ink)'
+        }}
       >
         <ClerkProvider>
           <Navbar />
-          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-10">
-            {children}
-          </main>
+          <main className="flex-1">{children}</main>
           <Toaster />
         </ClerkProvider>
       </body>
+      <Script
+        src="https://checkout.razorpay.com/v1/checkout.js"
+        strategy="lazyOnload"
+      />
     </html>
   )
 }

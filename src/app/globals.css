@@ -4,117 +4,93 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ─── NVIDIA Design System Tokens ─── */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
+  --font-mono: var(--font-mono);
+
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-ink: var(--ink);
+  --color-canvas: var(--canvas);
+  --color-surface-soft: var(--surface-soft);
+  --color-surface-dark: var(--surface-dark);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+  --color-body: var(--body-text);
+  --color-mute: var(--mute);
+  --color-stone: var(--stone);
+  --color-ash: var(--ash);
+  --color-on-dark: var(--on-dark);
+  --color-on-dark-mute: var(--on-dark-mute);
+  --color-green: var(--green);
+  --color-green-dark: var(--green-dark);
+
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-full: 9999px;
 }
 
 :root {
-  --background: oklch(0.14 0.02 250);
-  --foreground: oklch(0.96 0.01 250);
-  --card: oklch(0.18 0.025 250);
-  --card-foreground: oklch(0.96 0.01 250);
-  --popover: oklch(0.18 0.025 250);
-  --popover-foreground: oklch(0.96 0.01 250);
-  --primary: oklch(0.72 0.19 150);
-  --primary-foreground: oklch(0.12 0.03 150);
-  --secondary: oklch(0.24 0.03 250);
-  --secondary-foreground: oklch(0.92 0.01 250);
-  --muted: oklch(0.22 0.02 250);
-  --muted-foreground: oklch(0.7 0.02 250);
-  --accent: oklch(0.78 0.16 75);
-  --accent-foreground: oklch(0.14 0.03 75);
-  --destructive: oklch(0.62 0.22 25);
-  --border: oklch(0.28 0.03 250 / 0.6);
-  --input: oklch(0.28 0.03 250 / 0.6);
-  --ring: oklch(0.72 0.19 150);
-  --chart-1: oklch(0.72 0.19 150);
-  --chart-2: oklch(0.78 0.16 75);
-  --chart-3: oklch(0.65 0.18 210);
-  --chart-4: oklch(0.7 0.15 320);
-  --chart-5: oklch(0.8 0.14 40);
-  --radius: 0.75rem;
-  --sidebar: oklch(0.16 0.02 250);
-  --sidebar-foreground: oklch(0.96 0.01 250);
-  --sidebar-primary: oklch(0.72 0.19 150);
-  --sidebar-primary-foreground: oklch(0.12 0.03 150);
-  --sidebar-accent: oklch(0.24 0.03 250);
-  --sidebar-accent-foreground: oklch(0.92 0.01 250);
-  --sidebar-border: oklch(0.28 0.03 250 / 0.6);
-  --sidebar-ring: oklch(0.72 0.19 150);
-}
+  /* ─── Brand ─── */
+  --green: #76b900;
+  --green-dark: #5a8d00;
 
-.dark {
-  --background: oklch(0.14 0.02 250);
-  --foreground: oklch(0.96 0.01 250);
-  --card: oklch(0.18 0.025 250);
-  --card-foreground: oklch(0.96 0.01 250);
-  --popover: oklch(0.18 0.025 250);
-  --popover-foreground: oklch(0.96 0.01 250);
-  --primary: oklch(0.72 0.19 150);
-  --primary-foreground: oklch(0.12 0.03 150);
-  --secondary: oklch(0.24 0.03 250);
-  --secondary-foreground: oklch(0.92 0.01 250);
-  --muted: oklch(0.22 0.02 250);
-  --muted-foreground: oklch(0.7 0.02 250);
-  --accent: oklch(0.78 0.16 75);
-  --accent-foreground: oklch(0.14 0.03 75);
-  --destructive: oklch(0.62 0.22 25);
-  --border: oklch(0.28 0.03 250 / 0.6);
-  --input: oklch(0.28 0.03 250 / 0.6);
-  --ring: oklch(0.72 0.19 150);
-  --chart-1: oklch(0.72 0.19 150);
-  --chart-2: oklch(0.78 0.16 75);
-  --chart-3: oklch(0.65 0.18 210);
-  --chart-4: oklch(0.7 0.15 320);
-  --chart-5: oklch(0.8 0.14 40);
-  --sidebar: oklch(0.16 0.02 250);
-  --sidebar-foreground: oklch(0.96 0.01 250);
-  --sidebar-primary: oklch(0.72 0.19 150);
-  --sidebar-primary-foreground: oklch(0.12 0.03 150);
-  --sidebar-accent: oklch(0.24 0.03 250);
-  --sidebar-accent-foreground: oklch(0.92 0.01 250);
-  --sidebar-border: oklch(0.28 0.03 250 / 0.6);
-  --sidebar-ring: oklch(0.72 0.19 150);
+  /* ─── Surface ─── */
+  --background: #ffffff;
+  --foreground: #000000;
+  --canvas: #ffffff;
+  --surface-dark: #000000;
+  --surface-soft: #f7f7f7;
+  --surface-elevated: #1a1a1a;
+  --hairline: #cccccc;
+  --hairline-strong: #5e5e5e;
+
+  /* ─── Text ─── */
+  --ink: #000000;
+  --body-text: #1a1a1a;
+  --mute: #757575;
+  --stone: #898989;
+  --ash: #a7a7a7;
+  --on-dark: #ffffff;
+  --on-dark-mute: rgba(255, 255, 255, 0.7);
+
+  /* ─── Semantic (shadcn mapping) ─── */
+  --primary: #76b900;
+  --primary-foreground: #000000;
+  --secondary: #f7f7f7;
+  --secondary-foreground: #000000;
+  --muted: #f7f7f7;
+  --muted-foreground: #757575;
+  --accent: #f7f7f7;
+  --accent-foreground: #000000;
+  --destructive: #e52020;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --border: #cccccc;
+  --input: #cccccc;
+  --ring: #76b900;
 }
 
 @layer base {
@@ -122,42 +98,118 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground antialiased selection:bg-primary/30 selection:text-primary;
+    @apply antialiased;
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans), Inter, Arial, Helvetica, sans-serif;
   }
   html {
     @apply font-sans;
   }
 }
 
-.glass-panel {
-  background: rgba(22, 31, 48, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* ─── NVIDIA corner-square decoration ─── */
+.corner-square::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 12px;
+  height: 12px;
+  background-color: var(--green);
 }
 
-.glass-card {
-  background: rgba(26, 36, 56, 0.65);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+/* ─── Button variants ─── */
+.btn-primary {
+  background-color: var(--green);
+  color: #000000;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.25;
+  border-radius: 2px;
+  padding: 11px 24px;
+  height: 44px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.btn-primary:hover {
+  background-color: var(--green-dark);
+}
+.btn-primary:disabled {
+  background-color: var(--surface-soft);
+  color: var(--ash);
+  cursor: not-allowed;
 }
 
-.glass-card:hover {
-  border-color: rgba(52, 211, 153, 0.35);
-  box-shadow: 0 12px 30px -10px rgba(16, 185, 129, 0.15);
+.btn-outline {
+  background-color: transparent;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.25;
+  border-radius: 2px;
+  padding: 11px 13px;
+  height: 44px;
+  border: 2px solid var(--green);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.btn-outline:hover {
+  background-color: var(--surface-soft);
+}
+.btn-outline:disabled {
+  border-color: var(--hairline);
+  color: var(--ash);
+  cursor: not-allowed;
 }
 
-.glow-emerald {
-  box-shadow: 0 0 20px -3px rgba(52, 211, 153, 0.3);
+.btn-ghost {
+  background: none;
+  border: none;
+  color: var(--green);
+  font-weight: 700;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+}
+.btn-ghost:hover {
+  text-decoration: underline;
 }
 
-.bg-radial-gradient {
-  background-image: radial-gradient(
-    circle at 50% 0%,
-    rgba(16, 185, 129, 0.12) 0%,
-    rgba(14, 165, 233, 0.05) 35%,
-    transparent 70%
-  );
+/* ─── NVIDIA card base ─── */
+.nvidia-card {
+  background-color: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  position: relative;
+}
+
+/* ─── Badge / pill-tab ─── */
+.badge-tag {
+  background-color: var(--surface-soft);
+  color: var(--body-text);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.43;
+  text-transform: uppercase;
+  border-radius: 2px;
+  padding: 4px 10px;
+}
+
+.pill-tab {
+  background-color: transparent;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 14.4px;
+  line-height: 1;
+  letter-spacing: 0.144px;
+  border-radius: 2px;
+  padding: 10px 18px;
+  border: none;
+  cursor: pointer;
+}
+.pill-tab-active {
+  background-color: var(--ink);
+  color: var(--on-dark);
 }

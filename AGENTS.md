@@ -1,90 +1,94 @@
-# AGENTS.md — BookMySlot
+# TurfBooking — Implementation Audit & Update Prompt
 
-Context file for AI coding assistants working on this repo. Read this before generating or editing any code.
+Use this as an instruction set for a coding agent (Claude Code or similar) working on the existing TurfBooking repo. For each section: check whether the current implementation matches, and if not, update it to match — explain any deviation you keep, don't silently ignore a mismatch.
 
-## Next.js Rules & Conventions Notice
+---
 
-This repository utilizes modern Next.js conventions and App Router standards.
+## 1. Concurrency — no double-booking
 
-- Read documentation in `node_modules/next/dist/docs/` before implementing new code patterns.
-- Always check for deprecated Next.js features and prefer current patterns (e.g., Server Actions, App Router conventions).
+- [ ] `Booking` has a **partial** unique index on `(turfId, date, startTime)`, scoped to `WHERE status IN ('HELD','PAID','CONFIRMED')` — added via raw SQL migration, since Prisma's schema syntax can't express a predicate. A plain (non-partial) unique index is a bug here: it would block re-booking a slot after a cancellation.
+- [ ] `holdSlot` never reads availability before inserting (no check-then-insert / TOCTOU pattern). It goes straight to `INSERT`, catches Prisma error `P2002` (unique violation), and returns a typed result (`{ ok: false, reason: 'SLOT_TAKEN' }`) — never a raw thrown 500.
+- [ ] `getTurfSlots` (the read side) treats any `HELD` row past `holdExpiresAt` as available, independent of whether the QStash expiry job has run yet — correctness must not depend on job timing.
+- [ ] `initiatePayment` extends `Booking.holdExpiresAt` when a payment order is created, and the expiry-sweep query excludes bookings with a `PENDING`+ payment — so the sweep can't free a slot out from under someone mid-payment.
 
-## What this project is
+## 2. Payment idempotency (Razorpay)
 
-A real-time turf/slot booking app that solves two specific, real failure modes — not generic SaaS boilerplate:
+- [ ] `Payment.bookingId` is `@unique`, and `initiatePayment` is a get-or-create against it — a retried "Pay" click must return the _existing_ order, never create a second `Payment` row.
+- [ ] `Payment.idempotencyKey` is derived server-side as `pay_${bookingId}` — never a client-supplied UUID.
+- [ ] Webhook route (`api/webhooks/razorpay/route.ts`):
+  - Reads the **raw** request body (not pre-parsed JSON) before verifying `x-razorpay-signature` via HMAC-SHA256 against `RAZORPAY_WEBHOOK_SECRET`. Signature check happens on raw bytes, before any JSON parsing or schema validation.
+  - Rejects with 400 on signature mismatch, does not process further.
+  - Only after signature passes: parses and validates against a Zod schema (see §7), then inserts into `WebhookEvent` keyed on Razorpay's event ID as dedupe — if the insert finds a duplicate, returns 200 immediately with no further work.
+  - Publishes a QStash job (`confirm-payment`) and returns 200 immediately — does **not** perform the DB write inline (Razorpay retries slow/failed responses for up to 24h, which would manufacture more duplicate deliveries).
+- [ ] Subscribed webhook events are exactly `payment.captured` and `payment.failed` — no `refund.processed` subscription, since refunds are handled manually outside the app (see §10), not via a Razorpay refund webhook.
+- [ ] Razorpay order created with auto-capture (`payment_capture: 1`), not manual capture — funds are captured immediately on successful payment rather than left authorized-only pending a separate capture call.
+- [ ] The client-side Razorpay `handler` callback (`razorpay_payment_id`, `razorpay_order_id`, `razorpay_signature`) is used **only** for optimistic UI feedback — it is never what marks a booking `CONFIRMED`. That state transition happens exclusively in the `confirm-payment` job callback, triggered by the webhook.
+- [ ] `confirm-payment` job (Route Handler) uses a status-guarded update: `UPDATE Payment SET status='SUCCEEDED' WHERE bookingId=? AND status='PENDING'`. If zero rows match, the job returns immediately — this covers both a redelivered webhook and a QStash retry. **No email/side-effect step follows this** — the app sends no emails anywhere (see §10); the job's only job is the DB write.
 
-1. **Double-booking**: two people confirm the same slot because there's no real locking (typical of WhatsApp/form-based booking).
-2. **Double-charging**: a payment retry or webhook replay charges the same booking twice.
+## 3. Directory structure
 
-Every technical decision in this repo traces back to eliminating these two failures. If a suggested pattern doesn't serve one of them, don't add it "for best practices."
+- [ ] Single Next.js repo — no monorepo tooling (`apps/`, `packages/`). No standalone worker process — QStash delivers delayed/async jobs as signed HTTP callbacks to Route Handlers under `api/jobs/`.
+- [ ] **Deviation (confirmed, keep as-is):** `src/actions/` contains **all** operation functions — reads and writes together (`holdSlot`, `cancelBooking`, `initiatePayment`, `getTurfSlots`, `getUserBookings`, etc.). There is no separate `src/queries/` folder. Keep the read/write boundary legible via naming instead (`getX` = read, `holdX`/`cancelX`/`initiateX` = write), since there's no folder enforcing it.
+- [ ] `src/app/api/` contains only: webhooks, QStash job callbacks, and the SSE stream route. If any UI-triggered mutation is implemented as a Route Handler instead of a Server Action, flag and migrate it.
+- [ ] `lib/redis.ts`, `lib/publish.ts`, `lib/qstash.ts` are separate files with single responsibilities — not merged into one "redis stuff" file, and not duplicated inline at each call site.
 
-## Core user flow
+## 4. Redis
 
-Browse turf → pick a slot → slot is **held** → pay → booking **confirmed**.
-If someone else grabs the same slot while a user is paying, that user must be told **immediately** (live, via SSE) — not after they've paid.
+- [ ] `lib/redis.ts` exports a cached singleton (`getRedisConnection`) for general use, and a separate `createSubscriberConnection` (via `.duplicate()`) for SSE — never one shared client for both, since a connection in subscribe mode can't issue normal commands.
+- [ ] Connection string is Upstash's `rediss://` TCP endpoint (via `ioredis`), **not** their REST SDK (`@upstash/redis`) — pub/sub needs a long-held connection the REST model can't provide.
+- [ ] `ioredis` client is constructed with `maxRetriesPerRequest: null`.
+- [ ] SSE subscribes on **one channel per turf** (`turf:${turfId}:slots`), not one per slot — keeps concurrent-connection count bounded by open turf pages, relevant given Upstash's free-tier connection ceiling.
+- [ ] Every SSE route handler disconnects its subscriber connection on `req.signal`'s `abort` event — a missing cleanup leaks a held connection.
+- [ ] `getTurfSlots` cache: read-through cache keyed `cache:turf:${turfId}:slots:${date}`, short TTL (~30s) as a backstop, invalidated primarily via `redis.del(...)` inside `publishSlotUpdate` (same call site as the SSE publish — not a separate invalidation path that could drift out of sync).
+- [ ] This cache is read only by `getTurfSlots` for display — `holdSlot` must never consult it before inserting. Confirm no code path uses the cache to decide whether a hold should be attempted.
+- [ ] **Deviation (confirmed, deferred):** no rate limiting implemented. Not required for now — don't force it in, just don't claim it as built.
 
-Customer auth exists (via Clerk). No owner dashboard/login, no multi-tenant management, no rate limiting in this build — these were deliberately scoped out. Don't add them unless explicitly asked; if raised as a question, they're answered verbally as "future work," not built.
+## 5. Async work: Upstash QStash
 
-## Stack
+- [ ] `lib/qstash.ts` wraps the QStash client and the callback-signature verification helper.
+- [ ] Every "do this later" or "do this async" need becomes: `qstash.publishJSON({ url, body, delay? })` from a Server Action or webhook handler, landing on a Route Handler under `app/api/jobs/`.
+- [ ] QStash needs a public URL to call back into, so job callbacks only work against a deployed URL (preview or prod) — local testing uses the QStash CLI's dev tunnel to forward callbacks to `localhost`.
+- [ ] `expire-hold` job: verifies QStash signature, re-reads booking, only flips `HELD → EXPIRED` if it's _still_ `HELD`, publishes status change to Redis.
+- [ ] `confirm-payment` job: verifies QStash signature, updates `Payment.status` to `SUCCEEDED` and `Booking.status` to `CONFIRMED` inside one `$transaction` with status-guarded updates, publishes `CONFIRMED` to Redis.
 
-Next.js (App Router, TS strict) · PostgreSQL + Prisma · Redis (ioredis) · BullMQ · Clerk (auth) · Razorpay (payments) · Zod · Pino · Sentry · Vitest (unit) · Supertest (integration) · GitHub Actions
+## 6. Cron / scheduled sweeps
 
-## The two non-negotiable invariants
+- [ ] `lib/sweeps.ts` contains `sweepExpiredHolds` and `reconcileStuckPayments` as plain exported functions — logic is separate from whatever triggers it.
+- [ ] Confirm which trigger mechanism is actually used: QStash delay jobs (recommended) vs. Vercel Cron hitting an `api/cron/*` route. Either is acceptable — flag if both exist redundantly, or if neither is wired up.
+- [ ] `reconcile-payments` is explicitly optional/hardening — not a hard requirement. If not implemented, that's fine; don't need to force it in, just don't claim it as built if it isn't.
 
-1. **Partial unique index** on active holds per slot — enforced at the DB level, not in application code. This is what actually prevents double-booking under concurrency.
-2. **Unique constraint on `booking_id`** (or idempotency key) in the `payments` table — this is what actually prevents double-charging, not client-side debounce logic.
+## 7. Validation & types
 
-Never "fix" these with application-level checks alone (e.g. `SELECT` then `INSERT`). Race conditions require DB constraints.
+- [ ] `lib/schemas.ts` holds Zod schemas for every Server Action input, the `getTurfSlots` query input, and both webhook payloads (Razorpay, Clerk) — validated at the entry point of each, not deep inside business logic.
+- [ ] `types/index.ts` derives types via `z.infer<typeof schema>` — no hand-duplicated interfaces that could drift from the schema.
+- [ ] Server Action results (`HoldSlotResult`, `InitiatePaymentResult`, `CancelBookingResult`, etc.) are discriminated unions (`{ ok: true, ... } | { ok: false, reason }`), not thrown exceptions — losing the slot race, or cancelling an already-cancelled booking, is expected control flow, not an error path.
+- [ ] `Slot`/`SlotStatus` (client-facing, 3 states) are distinct from `Booking`/`BookingStatus` (backend, 4 states) — the collapse from 4→3 happens once, inside `getTurfSlots`, not scattered as ad-hoc checks in components.
 
-## Architecture rules
+## 8. UI / state
 
-- **Server Actions** (`src/actions/`) — all UI-initiated mutations (create hold, initiate payment, confirm booking). Read `userId` via Clerk's `auth()` server-side inside the action; never trust a `userId` passed from the client.
-- **Route Handlers** (`src/app/api/`) — external callers ONLY: payment webhook (Razorpay), Clerk webhook (user sync), cron (expire holds), SSE stream. Do not create Route Handlers for things the UI itself triggers.
-- **Auth**: Clerk owns identity, session, and login UI entirely. The app's own `User` table only stores `clerkId` plus relations (holds, bookings) — no password/OTP fields, no custom session logic.
-- **Webhook verification is mandatory, not optional**: Clerk webhook verified via Svix headers, Razorpay webhook verified via its HMAC signature. An unverified webhook route is a spoofable "payment succeeded" call — treat this as part of the core invariant, not a nice-to-have.
-- **Hold expiry is cron-driven** (`api/cron/expire-holds/route.ts`), sweeping every 30–60s. This is a deliberate simplicity choice over event-driven (e.g. Redis keyspace notifications) — defensible as "scheduled sweep," not claimed as instant expiry.
-- **Services** — services hold both business logic and direct Prisma DB calls. No separate repository layer or port/interface abstractions.
-- **Error hierarchy**: `AppError`, `ConflictError`, `NotFoundError`, `ValidationError`, `UnauthorizedError`. (No `RateLimitError` usage in this build — rate limiting is out of scope.)
-- **Response envelope**: all Server Actions and Route Handlers return via `ok()` / `fail()`, wrapped by `response.ts`.
-- **BullMQ** is used only for async booking confirmation after payment succeeds (receipt, finalization) — runs in a separate `worker.ts` process, deployed separately from the Next.js app (Next.js serverless can't host a long-running worker).
-- **SSE** (`api/slots/[slotId]/stream/route.ts`, edge runtime) backed by Redis pub/sub — publishes on hold created / hold expired via cron / slot booked. This is the headline differentiator ("told immediately" instead of after payment); don't replace with polling unless asked.
-- **Slot times stored in UTC** in the DB (`startsAt`/`endsAt`), converted to local time only at render.
+- [ ] Read-only pages (turfs list, bookings list, booking detail, profile) are Server Components with no client-side fetching — no React Query/SWR/global state library anywhere in the app (not needed at this app's scale; would compete with Postgres as a second source of truth).
+- [ ] `turf/[id]` page: turf detail (Server Component) + `SlotGrid` (client, real-time via SSE). `SlotGrid`'s Book button calls `holdSlot`, and on success redirects to `/bookings/[id]`.
+- [ ] `SlotGrid` seeds its `useState` from server-rendered `initialSlots` — no client-side fetch on mount.
+- [ ] SSE subscription logic lives in a dedicated hook (`useSlotStream`), not inlined in `SlotGrid` — component stays focused on rendering.
+- [ ] `onBook` in `SlotGrid` updates local state optimistically _before_ `holdSlot` resolves, and rolls back only on `{ ok: false }` — check this isn't waiting for the round-trip before showing any UI change.
+- [ ] `EventSource.onerror` triggers a one-time refetch of `getTurfSlots` on reconnect, to correct any update missed during the (expected, Vercel-timeout-driven) disconnect gap.
+- [ ] `/bookings/[id]` page: shows a Pay button while the booking is `HELD` and unpaid, with a countdown against `holdExpiresAt`. If the countdown elapses before payment is initiated, the booking is cancelled (via the sweep) and the page reflects that (disable Pay, show expired state — a re-fetch or redirect back to the turf page on expiry is acceptable).
+- [ ] Clicking Pay calls `initiatePayment`, which extends `holdExpiresAt` by 5 minutes server-side; the page re-fetches/re-renders with the new expiry before opening Razorpay checkout.
+- [ ] After the Razorpay `handler` fires (optimistic only, per §2), the booking page needs to reflect the real confirmation once the `confirm-payment` job lands — via a short poll of the booking's status (e.g. every 2–3s for ~30s) or a per-booking SSE subscription, since the webhook → job path is async relative to the client-side checkout completing.
+- [ ] `BookingList`'s cancel action is local `useState` + optimistic removal — no SSE needed here, since one user's booking list isn't affected by other users' actions.
 
-## Directory structure
+## 9. Telemetry
 
-```
-src/
-├── middleware.ts          # clerkMiddleware — guards /checkout, /bookings
-├── app/                   # pages, login/register (Clerk), + 4 external-facing Route Handlers
-│   └── api/
-│       ├── webhooks/{payment,clerk}/route.ts
-│       ├── cron/expire-holds/route.ts
-│       └── slots/[slotId]/stream/route.ts   # SSE, edge runtime
-├── actions/               # Server Actions (create-hold, initiate-payment, confirm-booking)
-├── services/              # hold.service, payment.service, slot.service
-├── queue/                 # BullMQ queue + worker for async confirmation
-└── lib/                   # db (Prisma), redis, logger (Pino), errors, response, schema
-```
+- [ ] `src/lib/logger.ts` (Pino) and a Sentry init exist for the Next.js app — confirm both exist.
+- [ ] Server Actions/routes log `{ action, ms, ok/status }` on completion — the concrete basis for the "API latency and success rate" telemetry claim.
 
-Models: `User` (clerkId only, no custom auth fields) · `Owner` · `Turf` · `Slot` · `Hold` (partial unique index on active holds per slot) · `Booking` · `Payment` (unique idempotency key / `bookingId`). No `Owner` login — owners are seeded relational data only.
+## 10. Cancellation & refunds
 
-## Testing requirements
+- [ ] `cancelBooking` is a status-guarded update — only transitions from `HELD`/`CONFIRMED` to `CANCELLED`; cancelling an already-cancelled booking is a no-op (`{ ok: true }`, not an error), not a thrown exception.
+- [ ] No Razorpay refund API call, no email sent by the app on cancellation — refunds are entirely manual and out-of-band.
+- [ ] Slot release is implicit, not a separate write: once `status = 'CANCELLED'`, the row falls outside the partial unique index's `WHERE` clause (§1), so the `(turfId, date, startTime)` slot is immediately available for a new `holdSlot` insert. No explicit "free the slot" step exists or is needed.
+- [ ] On successful cancellation, the UI shows a static message instructing the user to email support@mangalmv.live with their booking ID for a refund (relevant only if the booking was `CONFIRMED`). This is plain client-side copy — ideally with the booking ID pre-filled into a `mailto:` link — not a triggered email or queued job.
 
-- `tests/unit/` (Vitest) — services, error handling.
-- `tests/integration/` (Supertest) — Route Handlers end-to-end, including webhook flow.
-- `tests/concurrency/` — fire 50+ parallel hold attempts on one slot; assert exactly one succeeds.
-- `tests/idempotency/` — fire 100+ retries/replays of one payment event; assert exactly one charge.
-- Target: 80%+ coverage, enforced as a CI gate (build fails below threshold), not just measured.
+---
 
-## Observability
-
-- Pino for structured logs.
-- Sentry for error tracking.
-
-## When suggesting changes
-
-- Prefer the smallest change that preserves both invariants over a "more scalable" rewrite.
-- Don't introduce: owner login/dashboard, multi-tenancy beyond the existing `Owner` relation, port/interface abstractions, rate limiting, or event-driven (Redis keyspace notification) hold expiry — all deliberately scoped out. If the person asks about these, answer as a verbal "future work" point, don't build it.
-- Any new async/background work goes through BullMQ, not ad-hoc `setTimeout` or inline `await` chains in a request path.
-- Any new external-caller endpoint goes in `app/api/`; anything a logged-in user triggers is a Server Action.
-- Everything built should map back to one of: the two invariants (no double-booking, no double-charging), the SSE live-notice differentiator, or an explicit CV claim (BullMQ async confirmation, Vitest/Supertest coverage, Pino/Sentry telemetry). If a suggestion doesn't map to one of these, flag it as optional rather than adding it by default.
+**For every checkbox above that's unimplemented or implemented differently**: report the current state, explain the gap against the reasoning given, and either fix it or state explicitly why it's being deferred (e.g. "reconciliation cron: not built, noting as deferred per §6").

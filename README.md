@@ -22,7 +22,7 @@ pnpm dev
 ## Architecture
 
 - **Server Actions** — UI-initiated mutations (hold, payment, booking)
-- **Route Handlers** — external callers only (webhooks, cron, SSE)
+- **Route Handlers** — external callers only (webhooks, SSE, etc)
 - **DB constraints** — partial unique index prevents double-booking; unique constraint on payment idempotency key prevents double-charging
 
 ## Scripts

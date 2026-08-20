@@ -8,11 +8,10 @@ const isPublicRoute = createRouteMatcher([
   '/login(.*)',
   '/register(.*)',
   '/turf(.*)',
-  '/api/webhook(.*)',
-  '/api/turfs(.*)'
+  '/api/webhook(.*)'
 ])
 
-const isAdminRoute = createRouteMatcher(['/api/admin(.*)'])
+const isAdminRoute = createRouteMatcher(['/api/admin(.*)', '/admin(.*)'])
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = await auth()
