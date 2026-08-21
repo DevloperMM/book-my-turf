@@ -45,7 +45,7 @@ model Booking {
   user           User          @relation(fields: [userId], references: [id])
   payment        Payment?
 
-  @@unique([turfId, date, startTime], map: "booking_active_slot_key", where: raw("(status = ANY (ARRAY['HELD'::\"BookingStatus\", 'PAID'::\"BookingStatus\", 'CONFIRMED'::\"BookingStatus\"]))"))
+  @@unique([turfId, date, startTime], map: "booking_active_slot_key", where: raw("(status = ANY (ARRAY['HELD'::\"BookingStatus\", 'CONFIRMED'::\"BookingStatus\"]))"))
   @@index([turfId, date])
 }
 

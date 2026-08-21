@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma'
 import { qstashReceiver } from '@/lib/qstash'
 import { publishSlotUpdate, publishBookingUpdate } from '@/lib/redis'
 import { ValidationError } from '@/lib/errors'
+import { BookingStatus } from '@prisma-client'
 
 export async function POST(req: NextRequest) {
   const body = await req.text()
@@ -44,28 +45,52 @@ export async function POST(req: NextRequest) {
         data: { gatewayPaymentId, status: 'SUCCEEDED' }
       })
 
-      const booking = await tx.booking.update({
-        where: { id: bookingId, status: 'HELD' },
-        data: { status: 'CONFIRMED' }
+      const booking = await tx.booking.findUnique({ where: { id: bookingId } })
+      if (!booking) {
+        logger.warn({ bookingId }, 'Booking not found')
+        return null
+      }
+
+      let newStatus: BookingStatus
+      if (booking.status === BookingStatus.HELD) {
+        newStatus = BookingStatus.CONFIRMED
+      } else if (booking.status === BookingStatus.EXPIRED) {
+        newStatus = BookingStatus.PAID
+      } else {
+        logger.info(
+          { bookingId, status: booking.status },
+          'Booking in unexpected state, skipping status update'
+        )
+        return { payment: updatedPayment, booking, statusSkipped: true }
+      }
+
+      const updatedBooking = await tx.booking.update({
+        where: { id: bookingId },
+        data: { status: newStatus }
       })
 
-      return { payment: updatedPayment, booking }
+      return { payment: updatedPayment, booking: updatedBooking, newStatus }
     })
 
-    if (result) {
+    if (result && !result.statusSkipped && result.newStatus) {
       const dateStr = result.booking.date.toISOString().split('T')[0]
-      await publishSlotUpdate(
-        result.booking.turfId,
-        result.booking.startTime.toISOString(),
-        'booked',
-        dateStr
-      )
+      if (result.newStatus === BookingStatus.CONFIRMED) {
+        await publishSlotUpdate(
+          result.booking.turfId,
+          result.booking.startTime.toISOString(),
+          'booked',
+          dateStr
+        )
+      }
       await publishBookingUpdate(result.booking.id, {
-        status: 'CONFIRMED',
+        status: result.newStatus,
         paymentStatus: 'SUCCEEDED'
       })
 
-      logger.info({ bookingId, paymentId }, 'Payment confirmed and booking confirmed')
+      logger.info(
+        { bookingId, paymentId, newStatus: result.newStatus },
+        'Payment confirmed and booking updated'
+      )
     }
 
     return okResponse({ processed: true })

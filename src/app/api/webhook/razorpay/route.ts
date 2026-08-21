@@ -8,7 +8,7 @@ import prisma from '@/lib/prisma'
 import Razorpay from 'razorpay'
 import { qstashClient } from '@/lib/qstash'
 import { publishSlotUpdate, publishBookingUpdate } from '@/lib/redis'
-import { BookingStatus } from '@prisma-client'
+import { BookingStatus, Prisma } from '@prisma-client'
 
 export async function POST(req: NextRequest) {
   const body = await req.text()
@@ -41,15 +41,19 @@ export async function POST(req: NextRequest) {
   const eventId = req.headers.get('x-razorpay-event-id')
 
   if (eventId) {
-    const existing = await prisma.webhookEvent.findUnique({ where: { id: eventId } })
-    if (existing) {
-      logger.info({ eventId }, 'Duplicate webhook event! Payment already processed')
-      return okResponse({ processed: true, duplicate: true })
+    try {
+      const existing = await prisma.webhookEvent.findUnique({ where: { id: eventId } })
+      if (existing) {
+        logger.info({ eventId }, 'Duplicate webhook event! Payment already processed')
+        return okResponse({ processed: true, duplicate: true })
+      }
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        logger.info({ eventId }, 'Duplicate webhook event received; returning 200')
+        return okResponse({ processed: true, duplicate: true })
+      }
+      logger.warn({ err, eventId }, 'Failed to record WebhookEvent')
     }
-
-    await prisma.webhookEvent.create({
-      data: { id: eventId, type: schema.event }
-    })
   }
 
   try {
@@ -68,9 +72,8 @@ export async function POST(req: NextRequest) {
         return failResponse(new ValidationError('Payment not found for this order'))
       }
 
-      const baseUrl = req.nextUrl.origin
       await qstashClient.publishJSON({
-        url: `${baseUrl}/api/jobs/confirm-payment`,
+        url: `${env.NEXT_PUBLIC_APP_URL}/api/jobs/confirm-payment`,
         body: {
           bookingId: payment.bookingId,
           paymentId: payment.id,
@@ -78,6 +81,16 @@ export async function POST(req: NextRequest) {
           amount: paymentEntity.amount
         }
       })
+
+      if (eventId) {
+        await prisma.webhookEvent
+          .create({
+            data: { id: eventId, type: schema.event }
+          })
+          .catch((err) => {
+            logger.warn({ err, eventId }, 'Failed to insert WebhookEvent record')
+          })
+      }
 
       logger.info(
         { eventId, eventType: schema.event, bookingId: payment.bookingId },
@@ -118,6 +131,15 @@ export async function POST(req: NextRequest) {
             await publishBookingUpdate(booking.id, { status: 'CANCELLED', paymentStatus: 'FAILED' })
           }
         }
+      }
+      if (eventId) {
+        await prisma.webhookEvent
+          .create({
+            data: { id: eventId, type: schema.event }
+          })
+          .catch((err) => {
+            logger.warn({ err, eventId }, 'Failed to insert WebhookEvent record')
+          })
       }
       logger.warn({ eventId }, 'Razorpay payment.failed processed')
       return okResponse({ processed: true })

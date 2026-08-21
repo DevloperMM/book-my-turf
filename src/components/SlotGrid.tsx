@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useUser } from '@clerk/nextjs'
 import { createHold } from '@/actions/booking.action'
@@ -24,14 +24,29 @@ export function SlotGrid({ turfId, initialSlots }: SlotGridProps) {
   const { isSignedIn } = useUser()
   const [slots, setSlots] = useState<Slot[]>(initialSlots)
   const [isPending, startTransition] = useTransition()
+  const didReconnect = useRef(false)
 
-  useSlotStream(turfId, (update) => {
-    setSlots((prev) =>
-      prev.map((slot) =>
-        slot.startTime === update.startTime ? { ...slot, status: update.status } : slot
+  useSlotStream(
+    turfId,
+    (update) => {
+      setSlots((prev) =>
+        prev.map((slot) =>
+          slot.startTime === update.startTime ? { ...slot, status: update.status } : slot
+        )
       )
-    )
-  })
+    },
+    () => {
+      didReconnect.current = true
+      router.refresh()
+    }
+  )
+
+  useEffect(() => {
+    if (didReconnect.current) {
+      didReconnect.current = false
+      setSlots(initialSlots)
+    }
+  }, [initialSlots])
 
   const handleBook = (startTime: string) => {
     if (!isSignedIn) {
@@ -48,7 +63,7 @@ export function SlotGrid({ turfId, initialSlots }: SlotGridProps) {
       const result = await createHold({ turfId, startTime })
 
       if (result.ok) {
-        toast.success('Slot held! Complete payment within 10 minutes.')
+        toast.success('Slot held! Complete payment within 5 minutes.')
         router.push(`/booking/${result.bookingId}`)
       } else {
         setSlots((prev) =>

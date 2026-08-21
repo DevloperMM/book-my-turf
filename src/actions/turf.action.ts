@@ -86,7 +86,7 @@ export async function deleteTurf(id: string) {
   const activeBookings = await prisma.booking.count({
     where: {
       turfId: id,
-      status: { in: [BookingStatus.HELD, BookingStatus.PAID, BookingStatus.CONFIRMED] }
+      status: { in: [BookingStatus.HELD, BookingStatus.CONFIRMED] }
     }
   })
 
@@ -120,7 +120,7 @@ export async function getTurfSlots(turfId: string, date: string) {
     where: {
       turfId,
       date: dateObj,
-      status: { in: [BookingStatus.HELD, BookingStatus.PAID, BookingStatus.CONFIRMED] }
+      status: { in: [BookingStatus.HELD, BookingStatus.CONFIRMED] }
     },
     select: {
       startTime: true,
@@ -135,8 +135,11 @@ export async function getTurfSlots(turfId: string, date: string) {
     if (b.status === BookingStatus.HELD && b.holdExpiresAt <= now) {
       continue
     }
+    if (b.status === BookingStatus.PAID) {
+      continue
+    }
     const key = b.startTime.toISOString()
-    const isBooked = b.status === BookingStatus.CONFIRMED || b.status === BookingStatus.PAID
+    const isBooked = b.status === BookingStatus.CONFIRMED
     bookedMap.set(key, isBooked ? 'booked' : 'held')
   }
 

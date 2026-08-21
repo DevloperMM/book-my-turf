@@ -29,6 +29,7 @@ export default function BookingDetailPage() {
   const [loading, setLoading] = useState(true)
   const [isPending, startTransition] = useTransition()
   const [timeLeft, setTimeLeft] = useState<number>(0)
+  const [paymentInterrupted, setPaymentInterrupted] = useState(false)
 
   useEffect(() => {
     if (!isSignedIn || !user?.id) {
@@ -47,11 +48,28 @@ export default function BookingDetailPage() {
   }, [isSignedIn, user?.id, params.id, router])
 
   useBookingStream(booking?.id || '', (update) => {
-    setBooking((prev) => (prev ? { ...prev, ...update } : null))
+    setBooking((prev) => {
+      if (!prev) return null
+      const next = { ...prev }
+      if (update.status) next.status = update.status
+      if (update.paymentStatus) {
+        if (prev.payment) {
+          next.payment = { ...prev.payment, status: update.paymentStatus }
+        } else {
+          next.payment = {
+            id: '',
+            amount: 0,
+            status: update.paymentStatus,
+            createdAt: ''
+          }
+        }
+      }
+      return next
+    })
   })
 
   useEffect(() => {
-    if (!booking || booking.status !== 'HELD' || booking.payment) return
+    if (!booking || booking.status !== 'HELD') return
 
     const interval = setInterval(() => {
       const expires = new Date(booking.holdExpiresAt).getTime()
@@ -61,7 +79,9 @@ export default function BookingDetailPage() {
 
       if (diff === 0) {
         clearInterval(interval)
-        setBooking((prev) => (prev ? { ...prev, status: 'EXPIRED' } : null))
+        if (!booking.payment || booking.payment.status === 'FAILED') {
+          setBooking((prev) => (prev ? { ...prev, status: 'EXPIRED' } : null))
+        }
       }
     }, 1000)
 
@@ -70,6 +90,7 @@ export default function BookingDetailPage() {
 
   const handlePay = () => {
     if (!booking) return
+    setPaymentInterrupted(false)
 
     startTransition(async () => {
       try {
@@ -85,16 +106,19 @@ export default function BookingDetailPage() {
           currency: 'INR',
           name: 'BookMySlot',
           description: `Booking at ${booking.turf.name}`,
+          theme: { color: '#3399cc' },
           order_id: result.orderId,
+          retry: { enabled: false },
           handler: async (response: {
             razorpay_payment_id: string
             razorpay_order_id: string
             razorpay_signature: string
           }) => {
+            const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = response
             const verification = await verifyPaymentSignature({
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_signature: response.razorpay_signature
+              razorpay_payment_id,
+              razorpay_order_id,
+              razorpay_signature
             })
             if (verification.ok) {
               toast.success('Payment verified! Confirming...')
@@ -104,21 +128,13 @@ export default function BookingDetailPage() {
           },
           modal: {
             ondismiss: async () => {
-              toast.error('Payment cancelled')
-              try {
-                await cancelBooking({ bookingId: booking.id })
-                setBooking((prev) => (prev ? { ...prev, status: 'CANCELLED' } : null))
-              } catch {
-                // ignore — webhook will clean up if needed
-              }
+              setPaymentInterrupted(true)
+              toast.error('Payment was interrupted. Please try again before the countdown ends!')
             }
           },
           prefill: {
             name: user?.fullName || '',
             email: user?.emailAddresses?.[0]?.emailAddress || ''
-          },
-          theme: {
-            color: '#76b900'
           }
         }
 
@@ -134,8 +150,7 @@ export default function BookingDetailPage() {
                   amount: result.amount,
                   status: 'PENDING',
                   createdAt: new Date().toISOString()
-                },
-                holdExpiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString()
+                }
               }
             : null
         )
@@ -225,7 +240,11 @@ export default function BookingDetailPage() {
               fontWeight: 700,
               textTransform: 'uppercase',
               backgroundColor:
-                booking.status === 'CONFIRMED' ? 'var(--green)' : 'var(--surface-soft)',
+                booking.status === 'CONFIRMED'
+                  ? 'var(--green)'
+                  : booking.status === 'PAID'
+                    ? 'var(--destructive)'
+                    : 'var(--surface-soft)',
               color: booking.status === 'CONFIRMED' ? '#000000' : 'var(--ink)'
             }}
           >
@@ -352,7 +371,7 @@ export default function BookingDetailPage() {
                   style={{
                     height: '100%',
                     backgroundColor: 'var(--green)',
-                    width: `${(timeLeft / 600) * 100}%`,
+                    width: `${(timeLeft / 300) * 100}%`,
                     transition: 'width 1s linear'
                   }}
                 />
@@ -379,27 +398,138 @@ export default function BookingDetailPage() {
           </div>
         )}
 
-        {/* HELD — payment pending: no buttons */}
-        {booking.status === 'HELD' && booking.payment?.status === 'PENDING' && (
-          <div
-            className="nvidia-card"
-            style={{ padding: '32px', textAlign: 'center' }}
-          >
-            <p
-              style={{
-                fontWeight: 700,
-                color: 'var(--ink)',
-                marginBottom: '8px',
-                fontSize: '18px'
-              }}
+        {/* HELD — payment pending: countdown + processing message */}
+        {booking.status === 'HELD' &&
+          booking.payment?.status === 'PENDING' &&
+          paymentInterrupted && (
+            <div
+              className="nvidia-card"
+              style={{ padding: '32px' }}
             >
-              Payment processing
-            </p>
-            <p style={{ fontSize: '15px', color: 'var(--mute)' }}>
-              Waiting for confirmation from payment provider.
-            </p>
-          </div>
-        )}
+              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                <p
+                  style={{
+                    fontWeight: 700,
+                    color: 'var(--ink)',
+                    marginBottom: '8px',
+                    fontSize: '18px'
+                  }}
+                >
+                  Payment interrupted
+                </p>
+                <p style={{ fontSize: '15px', color: 'var(--mute)', marginBottom: '16px' }}>
+                  You closed the payment window. Complete payment before the countdown ends.
+                </p>
+                <p style={{ fontSize: '15px', color: 'var(--mute)', marginBottom: '8px' }}>
+                  Time remaining:{' '}
+                  <span
+                    style={{
+                      fontFamily: 'monospace',
+                      fontWeight: 700,
+                      color: 'var(--ink)',
+                      fontSize: '18px'
+                    }}
+                  >
+                    {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+                  </span>
+                </p>
+                <div
+                  style={{
+                    width: '100%',
+                    height: '4px',
+                    backgroundColor: 'var(--surface-soft)',
+                    borderRadius: '2px',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      backgroundColor: 'var(--green)',
+                      width: `${(timeLeft / 300) * 100}%`,
+                      transition: 'width 1s linear'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  className="btn-primary"
+                  style={{ flex: 1 }}
+                  onClick={handlePay}
+                  disabled={isPending || timeLeft === 0}
+                >
+                  {isPending ? 'Processing...' : 'Retry Payment'}
+                </button>
+                <button
+                  className="btn-outline"
+                  onClick={handleCancel}
+                  disabled={isPending}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+        {/* HELD — payment pending (Razorpay open): countdown + processing message */}
+        {booking.status === 'HELD' &&
+          booking.payment?.status === 'PENDING' &&
+          !paymentInterrupted && (
+            <div
+              className="nvidia-card"
+              style={{ padding: '32px', textAlign: 'center' }}
+            >
+              <p
+                style={{
+                  fontWeight: 700,
+                  color: 'var(--ink)',
+                  marginBottom: '8px',
+                  fontSize: '18px'
+                }}
+              >
+                Payment processing
+              </p>
+              <p style={{ fontSize: '15px', color: 'var(--mute)', marginBottom: '16px' }}>
+                Waiting for confirmation from payment provider.
+              </p>
+
+              <div style={{ textAlign: 'center' }}>
+                <p style={{ fontSize: '15px', color: 'var(--mute)', marginBottom: '8px' }}>
+                  Time remaining:{' '}
+                  <span
+                    style={{
+                      fontFamily: 'monospace',
+                      fontWeight: 700,
+                      color: 'var(--ink)',
+                      fontSize: '18px'
+                    }}
+                  >
+                    {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+                  </span>
+                </p>
+                <div
+                  style={{
+                    width: '100%',
+                    height: '4px',
+                    backgroundColor: 'var(--surface-soft)',
+                    borderRadius: '2px',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      backgroundColor: 'var(--green)',
+                      width: `${(timeLeft / 300) * 100}%`,
+                      transition: 'width 1s linear'
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
         {/* HELD — payment failed: no buttons */}
         {booking.status === 'HELD' && booking.payment?.status === 'FAILED' && (
@@ -495,6 +625,39 @@ export default function BookingDetailPage() {
             <p style={{ fontSize: '15px', color: 'var(--mute)' }}>
               Your slot is confirmed. For refunds, email support@mangalmv.live with your booking ID:{' '}
               <span style={{ fontFamily: 'monospace' }}>{booking.id}</span>
+            </p>
+          </div>
+        )}
+
+        {/* Paid — hold expired but payment succeeded */}
+        {booking.status === 'PAID' && (
+          <div
+            className="nvidia-card"
+            style={{ padding: '32px', textAlign: 'center' }}
+          >
+            <p
+              style={{
+                fontWeight: 700,
+                color: 'var(--destructive)',
+                marginBottom: '8px',
+                fontSize: '18px'
+              }}
+            >
+              Payment received, slot not booked
+            </p>
+            <p style={{ fontSize: '15px', color: 'var(--mute)', marginBottom: '8px' }}>
+              Your payment was received but the hold on your slot expired before confirmation. This
+              slot is no longer reserved for you.
+            </p>
+            <p style={{ fontSize: '15px', color: 'var(--mute)', marginBottom: '16px' }}>
+              To request a refund, email{' '}
+              <a
+                href={`mailto:support@mangalmv.live?subject=Refund%20Request%20-%20Booking%20${booking.id}`}
+                style={{ color: 'var(--destructive)', textDecoration: 'underline' }}
+              >
+                support@mangalmv.live
+              </a>{' '}
+              with your booking ID: <span style={{ fontFamily: 'monospace' }}>{booking.id}</span>
             </p>
           </div>
         )}

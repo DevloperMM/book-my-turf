@@ -8,43 +8,72 @@ interface SlotUpdate {
   status: 'available' | 'held' | 'booked'
 }
 
-// eslint-disable-next-line no-unused-vars
-export function useSlotStream(turfId: string, onUpdate: (update: SlotUpdate) => void) {
+export function useSlotStream(
+  turfId: string,
+  onUpdate: (update: SlotUpdate) => void,
+  onReconnect?: () => void
+) {
   const onUpdateRef = useRef(onUpdate)
+  const onReconnectRef = useRef(onReconnect)
 
   useEffect(() => {
     onUpdateRef.current = onUpdate
   }, [onUpdate])
 
   useEffect(() => {
+    onReconnectRef.current = onReconnect
+  }, [onReconnect])
+
+  useEffect(() => {
+    if (!turfId) return
+
     let closed = false
-    const eventSource = new EventSource(`/api/sse/turf/${turfId}`)
+    let eventSource: EventSource | null = null
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as SlotUpdate
-        onUpdateRef.current(data)
-      } catch {
-        // ignore parse errors
+    const connect = () => {
+      if (closed) return
+
+      eventSource = new EventSource(`/api/sse/turf/${turfId}`)
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as SlotUpdate
+          onUpdateRef.current(data)
+        } catch {
+          // ignore parse errors
+        }
+      }
+
+      eventSource.onerror = () => {
+        eventSource?.close()
+        if (!closed) {
+          setTimeout(connect, 3000)
+        }
       }
     }
 
-    eventSource.onerror = () => {
-      eventSource.close()
+    connect()
+
+    const reconnectHandler = () => {
+      eventSource?.close()
       if (!closed) {
-        setTimeout(() => {
-          if (!closed) {
-            const retry = new EventSource(`/api/sse/turf/${turfId}`)
-            retry.onmessage = eventSource.onmessage
-            retry.onerror = () => retry.close()
-          }
-        }, 3000)
+        connect()
+        onReconnectRef.current?.()
       }
     }
+
+    const handleOnline = () => {
+      if (!closed && navigator.onLine) {
+        reconnectHandler()
+      }
+    }
+
+    window.addEventListener('online', handleOnline)
 
     return () => {
       closed = true
-      eventSource.close()
+      eventSource?.close()
+      window.removeEventListener('online', handleOnline)
     }
   }, [turfId])
 }

@@ -3,7 +3,7 @@ import { okResponse, failResponse } from '@/lib/response'
 import { logger } from '@/lib/logger'
 import prisma from '@/lib/prisma'
 import { qstashReceiver } from '@/lib/qstash'
-import { publishSlotUpdate } from '@/lib/redis'
+import { publishSlotUpdate, publishBookingUpdate } from '@/lib/redis'
 import { ValidationError } from '@/lib/errors'
 
 export async function POST(req: NextRequest) {
@@ -33,7 +33,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const booking = await prisma.booking.findUnique({
-      where: { id: bookingId }
+      where: { id: bookingId },
+      include: { payment: true }
     })
 
     if (!booking) {
@@ -49,6 +50,24 @@ export async function POST(req: NextRequest) {
       return okResponse({ processed: true })
     }
 
+    const now = new Date()
+    if (booking.holdExpiresAt > now) {
+      logger.info(
+        { bookingId, holdExpiresAt: booking.holdExpiresAt },
+        'Hold has not expired yet, skipping expire'
+      )
+
+      return okResponse({ processed: true, skipped: 'HOLD_NOT_EXPIRED' })
+    }
+
+    if (booking.payment && booking.payment.status === 'SUCCEEDED') {
+      logger.info(
+        { bookingId, paymentStatus: booking.payment.status },
+        'Booking has succeeded payment, skipping expire'
+      )
+      return okResponse({ processed: true, skipped: 'PAYMENT_SUCCEEDED' })
+    }
+
     await prisma.booking.update({
       where: { id: bookingId, status: 'HELD' },
       data: { status: 'EXPIRED' }
@@ -56,6 +75,7 @@ export async function POST(req: NextRequest) {
 
     const dateStr = booking.date.toISOString().split('T')[0]
     await publishSlotUpdate(booking.turfId, booking.startTime.toISOString(), 'available', dateStr)
+    await publishBookingUpdate(booking.id, { status: 'EXPIRED' })
 
     logger.info({ bookingId }, 'Hold expired')
     return okResponse({ processed: true })

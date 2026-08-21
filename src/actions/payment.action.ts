@@ -2,15 +2,14 @@
 
 import { auth } from '@clerk/nextjs/server'
 import prisma from '@/lib/prisma'
-import { NotFoundError, UnauthorizedError, ValidationError } from '@/lib/errors'
+import { UnauthorizedError, ValidationError } from '@/lib/errors'
 import { initiatePaymentSchema, verifyPaymentSchema } from '@/lib/schemas'
 import { razorpay } from '@/lib/razorpay'
 import { logger } from '@/lib/logger'
 import { type InitiatePaymentInput, type InitiatePaymentResult } from '@/types'
 import Razorpay from 'razorpay'
 import { BookingStatus, PaymentStatus } from '@prisma-client'
-
-const PAYMENT_HOLD_EXTEND_MS = 5 * 60 * 1000
+import { env } from '@/config/env'
 
 export async function initiatePayment(input: InitiatePaymentInput): Promise<InitiatePaymentResult> {
   const { userId } = await auth()
@@ -33,10 +32,7 @@ export async function initiatePayment(input: InitiatePaymentInput): Promise<Init
 
   const existingPayment = booking.payment
   if (existingPayment && existingPayment.gatewayOrderId) {
-    logger.info(
-      { bookingId, orderId: existingPayment.gatewayOrderId },
-      'Returning existing payment order (idempotent)'
-    )
+    logger.info({ bookingId, orderId: existingPayment.gatewayOrderId }, 'Returning existing order')
     return {
       ok: true,
       orderId: existingPayment.gatewayOrderId,
@@ -51,8 +47,7 @@ export async function initiatePayment(input: InitiatePaymentInput): Promise<Init
     amount: booking.turf.pricePerHr * 100,
     currency: 'INR',
     receipt: bookingId,
-    notes: { bookingId },
-    payment_capture: true
+    notes: { bookingId }
   })
 
   const payment = await prisma.payment.upsert({
@@ -70,11 +65,6 @@ export async function initiatePayment(input: InitiatePaymentInput): Promise<Init
     }
   })
 
-  await prisma.booking.update({
-    where: { id: bookingId },
-    data: { holdExpiresAt: new Date(Date.now() + PAYMENT_HOLD_EXTEND_MS) }
-  })
-
   logger.info({ bookingId, paymentId: payment.id, orderId: order.id }, 'Payment initiated')
 
   return {
@@ -82,81 +72,6 @@ export async function initiatePayment(input: InitiatePaymentInput): Promise<Init
     orderId: order.id,
     amount: booking.turf.pricePerHr,
     keyId: process.env.RAZORPAY_KEY_ID!
-  }
-}
-
-export async function confirmPayment(payload: {
-  id: string
-  order_id: string
-  amount: number
-  status: string
-}) {
-  const { id: gatewayPaymentId, order_id: gatewayOrderId, status: gatewayStatus } = payload
-
-  if (gatewayStatus !== 'captured') {
-    logger.warn({ gatewayPaymentId, gatewayStatus }, 'Payment not captured')
-    return null
-  }
-
-  const existingPayment = await prisma.payment.findFirst({
-    where: { gatewayPaymentId }
-  })
-  if (existingPayment) {
-    logger.info({ gatewayPaymentId }, 'Payment already processed (idempotent)')
-    return existingPayment
-  }
-
-  const payment = await prisma.payment.findFirst({
-    where: { gatewayOrderId }
-  })
-  if (!payment) {
-    logger.error({ gatewayOrderId }, 'Payment not found for order')
-    throw new NotFoundError('Payment not found for this order')
-  }
-
-  if (payment.status === PaymentStatus.SUCCEEDED) {
-    logger.info({ paymentId: payment.id }, 'Payment already succeeded (idempotent)')
-    return payment
-  }
-
-  const [updatedPayment] = await prisma.$transaction([
-    prisma.payment.update({
-      where: { id: payment.id },
-      data: {
-        gatewayPaymentId,
-        status: PaymentStatus.SUCCEEDED
-      }
-    }),
-    prisma.booking.update({
-      where: { id: payment.bookingId },
-      data: { status: BookingStatus.CONFIRMED }
-    })
-  ])
-
-  logger.info({ paymentId: payment.id, bookingId: payment.bookingId }, 'Payment confirmed')
-
-  return updatedPayment
-}
-
-export async function verifyPayment(bookingId: string, userId: string) {
-  const booking = await prisma.booking.findFirst({
-    where: { id: bookingId, userId },
-    include: { payment: true }
-  })
-
-  if (!booking) throw new NotFoundError('Booking not found')
-
-  return {
-    bookingId: booking.id,
-    status: booking.status,
-    payment: booking.payment
-      ? {
-          id: booking.payment.id,
-          amount: booking.payment.amount,
-          status: booking.payment.status,
-          createdAt: booking.payment.createdAt
-        }
-      : null
   }
 }
 
@@ -177,7 +92,7 @@ export async function verifyPaymentSignature(input: {
   const expectedSignature = Razorpay.validateWebhookSignature(
     body,
     razorpay_signature,
-    process.env.RAZORPAY_KEY_SECRET!
+    env.RAZORPAY_KEY_SECRET!
   )
 
   if (!expectedSignature) {

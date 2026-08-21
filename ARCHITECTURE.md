@@ -4,6 +4,8 @@
 
 - No double-booking under concurrent requests (DB-level partial unique index on active holds/slots, not app-level locking)
 - No double-charge under payment retry / webhook redelivery
+- Hold TTL is 5 minutes, never extended — payment must complete within the original countdown
+- `PAID` booking status surfaces "payment received but slot not booked" to the UI with clear refund instructions
 - Public dashboard browsable without signup; booking requires Clerk auth
 - Clerk → DB sync via Svix webhook
 - UI mutations strictly use Server Actions (`src/actions/`); Route Handlers (`src/app/api/`) are external callers ONLY (webhooks, QStash job callbacks, SSE)
@@ -28,6 +30,7 @@ datasource db {
 
 enum BookingStatus {
   HELD
+  PAID
   CONFIRMED
   EXPIRED
   CANCELLED
@@ -76,7 +79,7 @@ model Booking {
   updatedAt      DateTime      @updatedAt
   payment        Payment?
 
-  @@unique([turfId, date, startTime], where: raw("status IN ('HELD', 'CONFIRMED')"), map: "unique_active_slot")
+  @@unique([turfId, date, startTime], where: raw("status IN ('HELD', 'PAID', 'CONFIRMED')"), map: "unique_active_slot")
   @@index([turfId, date])
 }
 
@@ -103,7 +106,7 @@ model WebhookEvent {
 
 **Why the partial unique index is the whole locking strategy:** Postgres enforces uniqueness atomically at the index level. Two concurrent `INSERT`s for the same `(turfId, date, startTime)` where status is `HELD`/`CONFIRMED` — one commits, one gets a `23505` unique-violation error. No `SELECT ... FOR UPDATE`, no transaction wrapping a check-then-insert, and it's correct across multiple app server instances by construction. The `where` clause means `EXPIRED`/`CANCELLED` rows don't count, so a slot frees up the instant a booking leaves an active state — no separate "release the slot" step.
 
-**Why `Booking.status` has 4 states, not 5:** `Payment.status` already tracks the payment lifecycle (`PENDING`/`SUCCEEDED`/`FAILED`) separately. Adding a `PAID` booking-state on top would just duplicate a fact that already lives in `Payment` — one less state to keep in sync.
+**Why `Booking.status` has 5 states:** `HELD` is the initial transient state with a TTL. `CONFIRMED` means the slot is booked and payment succeeded. `PAID` means payment was received but the hold expired before confirmation — the slot is lost, but the payment receipt is preserved to enable future automatic refund flows. `EXPIRED` and `CANCELLED` are terminal states where the slot is free. `Payment.status` tracks the payment lifecycle (`PENDING`/`SUCCEEDED`/`FAILED`) separately, but `PAID` as a booking state surfaces the "paid but not booked" condition to the UI so the user sees a clear "Payment received, slot not booked — contact support for refund" message instead of an ambiguous state.
 
 **Two separate idempotency keys, two separate problems:**
 
@@ -142,7 +145,7 @@ await redis.publish(`turf:${turfId}:slots`, JSON.stringify({ slotStartTime, stat
 
 `app/api/sse/turf/[id]/route.ts` runs on the **Node runtime** (not Edge — it needs a real persistent TCP connection to Redis, not just the REST API). When a browser opens the stream, the handler `SUBSCRIBE`s to that turf's channel and forwards every message straight into the open HTTP response as an SSE event. On disconnect, it unsubscribes and closes the Redis connection.
 
-Publish points: `createHold` (→ `HELD`), the `expire-hold` job callback (→ `EXPIRED`), `confirm-payment` job callback (→ `CONFIRMED`), `cancelBooking` (→ `CANCELLED`).
+Publish points: `createHold` (→ `HELD`), the `expire-hold` job callback (→ `EXPIRED`), `confirm-payment` job callback (→ `CONFIRMED` or `PAID`), `cancelBooking` (→ `CANCELLED`). Each publish writes to both the turf slot channel (for the SlotGrid SSE) and the booking status channel (for the booking detail page SSE).
 
 **Known limit, worth naming out loud:** SSE connections stay open for as long as a user has the page open, and Vercel serverless functions have execution-time caps depending on plan. Fine for a portfolio project's realistic traffic; at real scale this is the piece you'd move to a persistent Node service.
 
@@ -153,9 +156,9 @@ Publish points: `createHold` (→ `HELD`), the `expire-hold` job callback (→ `
 `createHold` Server Action:
 
 1. Generate/receive `idempotencyKey` from the client.
-2. `INSERT` the `Booking` row, `status: HELD`, `holdExpiresAt: now + 10m`.
+2. `INSERT` the `Booking` row, `status: HELD`, `holdExpiresAt: now + 5m`.
 3. Catch `P2002` (partial unique index violation) → return "slot taken" — this is the whole concurrency guarantee, not app-level locking.
-4. On success: publish to Redis (`HELD`), then `qstash.publishJSON({ url: '.../api/jobs/expire-hold', body: { bookingId }, delay: '10m' })`.
+4. On success: publish to Redis (`HELD`), then `qstash.publishJSON({ url: '.../api/jobs/expire-hold', body: { bookingId }, delay: '5m' })`.
 
 `expire-hold` job (Route Handler, called back by QStash):
 
@@ -182,8 +185,8 @@ Two separate idempotency problems, both need solving:
 `confirm-payment` job (Route Handler, called back by QStash), inside one `$transaction`:
 
 - `Payment.update({ where: { id, status: 'PENDING' }, data: { status: 'SUCCEEDED' } })`
-- `Booking.update({ where: { id, status: 'HELD' }, data: { status: 'CONFIRMED' } })`
-- Publish `CONFIRMED` to Redis.
+- `Booking.update({ where: { id, status: 'HELD' }, data: { status: 'CONFIRMED' } })` — or, if the booking has already expired, `Booking.update({ where: { id, status: 'EXPIRED' }, data: { status: 'PAID' } })`
+- Publish result to Redis (both turf slot channel and booking status channel).
 
 Note the `where: { ..., status: 'PENDING' }` / `status: 'HELD'` pattern — Prisma's `update` only matches rows satisfying the full `where`, so a re-run of this job (in the rare case QStash retries a callback) that finds the row already past that state simply matches nothing and no-ops, instead of needing a manual `if (already done) return`.
 
@@ -340,10 +343,9 @@ turfbooking/
 │   │
 │   ├── lib/
 │   │   ├── prisma.ts                         # Prisma client singleton (Neon adapter)
-│   │   ├── redis.ts                          # ioredis client — getRedisConnection + createSubscriberConnection
+│   │   ├── redis.ts                          # ioredis client — getRedisConnection + createSubscriberConnection + pub/sub publishers
 │   │   ├── qstash.ts                         # QStash client + callback signature verification
 │   │   ├── razorpay.ts                       # Razorpay client instance
-│   │   ├── publish.ts                        # Redis pub/sub publisher (slot updates + cache invalidation)
 │   │   ├── logger.ts                         # Pino logger
 │   │   ├── errors.ts                         # AppError hierarchy (Conflict, NotFound, Unauthorized, etc.)
 │   │   ├── response.ts                       # API response helpers (ok/fail)

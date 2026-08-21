@@ -17,8 +17,7 @@ import { qstashClient } from '@/lib/qstash'
 import { env } from '@/config/env'
 import { getISTHourFromUTC, getCurrentISTDate } from '@/lib/timezone'
 import crypto from 'crypto'
-
-const HOLD_TTL_MINUTES = 10
+import { HOLD_TTL_MINUTES } from '@/lib/constants'
 
 export async function createHold(input: HoldSlotInput): Promise<HoldSlotResult> {
   const { userId } = await auth()
