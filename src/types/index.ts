@@ -16,7 +16,8 @@ export type InitiatePaymentInput = z.infer<typeof initiatePaymentSchema>
 export type SlotStatus = 'available' | 'held' | 'booked'
 
 export type HoldSlotResult =
-  { ok: true; bookingId: string } | { ok: false; reason: 'UNAUTHENTICATED' | 'SLOT_TAKEN' }
+  | { ok: true; bookingId: string }
+  | { ok: false; reason: 'UNAUTHENTICATED' | 'SLOT_TAKEN' | 'HAS_ACTIVE_HOLD' }
 
 export type CancelBookingResult = { ok: true } | { ok: false; reason: 'INVALID_STATUS' }
 

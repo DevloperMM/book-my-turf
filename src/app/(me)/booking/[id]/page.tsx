@@ -100,6 +100,8 @@ export default function BookingDetailPage() {
           return
         }
 
+        let isPaymentFailed = false
+
         const options = {
           key: result.keyId,
           amount: result.amount * 100,
@@ -129,7 +131,9 @@ export default function BookingDetailPage() {
           modal: {
             ondismiss: async () => {
               setPaymentInterrupted(true)
-              toast.error('Payment was interrupted. Please try again before the countdown ends!')
+              if (!isPaymentFailed) {
+                toast.error('Payment was interrupted. Please try again before the countdown ends!')
+              }
             }
           },
           prefill: {
@@ -139,6 +143,9 @@ export default function BookingDetailPage() {
         }
 
         const rzp = new window.Razorpay(options)
+        rzp.on('payment.failed', () => {
+          isPaymentFailed = true
+        })
         rzp.open()
 
         setBooking((prev) =>
@@ -622,10 +629,17 @@ export default function BookingDetailPage() {
             >
               Booking Confirmed
             </p>
-            <p style={{ fontSize: '15px', color: 'var(--mute)' }}>
+            <p style={{ fontSize: '15px', color: 'var(--mute)', marginBottom: '16px' }}>
               Your slot is confirmed. For refunds, email support@mangalmv.live with your booking ID:{' '}
               <span style={{ fontFamily: 'monospace' }}>{booking.id}</span>
             </p>
+            <button
+              className="btn-outline"
+              onClick={handleCancel}
+              disabled={isPending}
+            >
+              Cancel Booking
+            </button>
           </div>
         )}
 

@@ -4,9 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
-import { listBookings, cancelBooking } from '@/actions/booking.action'
-import { toast } from 'sonner'
-import { useTransition } from 'react'
+import { listBookings } from '@/actions/booking.action'
 import { toISTDateString, toISTTimeRange } from '@/lib/timezone'
 
 interface Booking {
@@ -34,7 +32,6 @@ export default function BookingsPage() {
   const router = useRouter()
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
-  const [isPending, startTransition] = useTransition()
 
   useEffect(() => {
     if (!isSignedIn || !user?.id) {
@@ -51,20 +48,6 @@ export default function BookingsPage() {
         setLoading(false)
       })
   }, [isSignedIn, user?.id, router])
-
-  const handleCancel = (bookingId: string) => {
-    if (!confirm('Cancel this booking?')) return
-
-    startTransition(async () => {
-      try {
-        await cancelBooking({ bookingId })
-        setBookings((prev) => prev.filter((b) => b.id !== bookingId))
-        toast.success('Booking cancelled')
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Failed to cancel')
-      }
-    })
-  }
 
   if (loading) {
     return (
@@ -116,7 +99,7 @@ export default function BookingsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--hairline)' }}>
-                  {['Turf', 'Date', 'Time', 'Status', 'Amount', 'Actions'].map((h) => (
+                  {['Turf', 'Date', 'Time', 'Status', 'Amount'].map((h) => (
                     <th
                       key={h}
                       style={{
@@ -149,7 +132,8 @@ export default function BookingsPage() {
                   return (
                     <tr
                       key={booking.id}
-                      style={{ borderBottom: '1px solid var(--hairline)' }}
+                      onClick={() => router.push(`/booking/${booking.id}`)}
+                      style={{ borderBottom: '1px solid var(--hairline)', cursor: 'pointer' }}
                     >
                       <td style={{ padding: '16px', fontWeight: 700, fontSize: '16px' }}>
                         {booking.turf.name}
@@ -178,33 +162,6 @@ export default function BookingsPage() {
                       </td>
                       <td style={{ padding: '16px', fontSize: '15px', fontWeight: 700 }}>
                         ₹{booking.turf.pricePerHr}
-                      </td>
-                      <td style={{ padding: '16px', textAlign: 'right' }}>
-                        <div className="flex gap-2 justify-end">
-                          <Link href={`/booking/${booking.id}`}>
-                            <button
-                              className="btn-outline"
-                              style={{ height: '32px', fontSize: '14px', padding: '0 12px' }}
-                            >
-                              View
-                            </button>
-                          </Link>
-                          {(booking.status === 'HELD' || booking.status === 'CONFIRMED') && (
-                            <button
-                              className="btn-primary"
-                              style={{
-                                height: '32px',
-                                fontSize: '14px',
-                                padding: '0 12px',
-                                backgroundColor: 'var(--destructive)'
-                              }}
-                              onClick={() => handleCancel(booking.id)}
-                              disabled={isPending}
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </div>
                       </td>
                     </tr>
                   )

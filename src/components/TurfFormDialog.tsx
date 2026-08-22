@@ -2,7 +2,7 @@
 
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useTransition } from 'react'
+import { useEffect, useTransition } from 'react'
 import { turfSchema } from '@/lib/schemas'
 import { createTurf, updateTurf } from '@/actions/turf.action'
 import { toast } from 'sonner'
@@ -42,6 +42,32 @@ export function TurfFormDialog({ open, onOpenChange, turf, onSuccess }: TurfForm
       imageUrl: turf?.imageUrl ?? ''
     }
   })
+
+  useEffect(() => {
+    if (open) {
+      if (turf) {
+        form.reset({
+          name: turf.name,
+          location: turf.location,
+          pricePerHr: turf.pricePerHr,
+          openHour: turf.openHour,
+          closeHour: turf.closeHour,
+          slotMinutes: turf.slotMinutes,
+          imageUrl: turf.imageUrl ?? ''
+        })
+      } else {
+        form.reset({
+          name: '',
+          location: '',
+          pricePerHr: 0,
+          openHour: 6,
+          closeHour: 22,
+          slotMinutes: 60,
+          imageUrl: ''
+        })
+      }
+    }
+  }, [open, turf, form])
 
   const onSubmit = form.handleSubmit((data) => {
     startTransition(async () => {

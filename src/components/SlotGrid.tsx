@@ -71,7 +71,13 @@ export function SlotGrid({ turfId, initialSlots }: SlotGridProps) {
             slot.startTime === startTime ? { ...slot, status: 'available' } : slot
           )
         )
-        toast.error(result.reason === 'SLOT_TAKEN' ? 'This slot was just taken' : 'Failed to book')
+        if (result.reason === 'HAS_ACTIVE_HOLD') {
+          toast.error('You have one active booking, either pay or cancel that in My Bookings')
+        } else if (result.reason === 'SLOT_TAKEN') {
+          toast.error('This slot was just taken')
+        } else {
+          toast.error('Failed to book')
+        }
       }
     })
   }

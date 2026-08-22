@@ -23,6 +23,18 @@ export async function createHold(input: HoldSlotInput): Promise<HoldSlotResult> 
   const { userId } = await auth()
   if (!userId) return { ok: false, reason: 'UNAUTHENTICATED' }
 
+  const activeHold = await prisma.booking.findFirst({
+    where: {
+      userId,
+      status: BookingStatus.HELD,
+      holdExpiresAt: { gt: new Date() }
+    }
+  })
+
+  if (activeHold) {
+    return { ok: false, reason: 'HAS_ACTIVE_HOLD' }
+  }
+
   const parsed = holdSlotSchema.safeParse(input)
   if (!parsed.success) {
     throw new ValidationError('Invalid input')
